@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 import httpx
-# import requests
 import sys, subprocess
 from html import unescape
 from re import search
