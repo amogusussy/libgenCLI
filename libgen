@@ -1,0 +1,120 @@
+#!/usr/bin/python3
+import httpx
+# import requests
+import sys, subprocess
+from html import unescape
+from re import search
+from urllib.parse import quote, unquote
+from bs4 import BeautifulSoup
+
+
+def getInfo( name ):
+    x = httpx.get(
+            url=f"https://libgen.is/search.php?req={quote(name)}"
+        )
+
+    html = BeautifulSoup(x.content, "html.parser")
+    itemList = html.findAll('table')[2].findAll('tr')[1:]
+
+    bookList = {}
+
+    bookIndex = 0
+
+    for item in itemList:
+        tdList = item.findAll("td")
+
+        itemID = search("<td>(.*)</td>", str(tdList[0])).group(1)
+
+        authors = unescape(", ".join([i.decode_contents() for i in BeautifulSoup(str(tdList[1]), "html.parser").findAll("a")]).replace("  ", " "))
+
+        title = str(BeautifulSoup(
+                str(tdList[2].decode_contents()), "html.parser"
+            ).findAll("a")[0].decode_contents())
+        titleIndex = title.find("<")
+        if not titleIndex == -1:
+            title = title[:titleIndex]
+
+        publisher = search("<td>(.*)</td>", str(tdList[3])).group(1)
+        
+        year = search("\">(.*)</td>", str(tdList[4])).group(1)
+
+        page = str(tdList[5])
+
+        if "br" not in page:
+            page = search("<td>(.*)</td>", page).group(1)
+        else:
+            page = search("<td>(.*)<br", page).group(1)
+
+        language = search("<td>(.*)</td>", str(tdList[6])).group(1)
+
+        size = search("\">(.*)</td>", str(tdList[7])).group(1)
+
+        fileType = search("\">(.*)</td>", str(tdList[8])).group(1)
+
+        link = search("href=\"(.*)\" ", str(tdList[9])).group(1)
+
+        altLink = search("href=\"(.*)\" ", str(tdList[10])).group(1)
+
+        bookList[bookIndex] = {}
+        bookList[bookIndex]["ID"] = itemID
+        bookList[bookIndex]["authors"] = authors
+        bookList[bookIndex]["title"] = title
+        bookList[bookIndex]["publishers"] = publisher
+        bookList[bookIndex]["year"] = year
+        bookList[bookIndex]["page"] = page
+        bookList[bookIndex]["lang"] = language
+        bookList[bookIndex]["size"] = size
+        bookList[bookIndex]["fileType"] = fileType
+        bookList[bookIndex]["link"] = link
+        bookList[bookIndex]["altLink"] = altLink
+        bookIndex += 1
+    return bookList
+
+def main( name ):
+    info = getInfo(name)
+
+    for i in range(len(info)):
+        book = info[i]
+        print("\n",
+            f"\033[93m{i + 1}: "
+            f"\033[94m{book['title'].strip()}\n",
+            f"\033[91m{book['authors']}\n",
+            f"\033[96mYear: {book['year']}",
+            f"\033[95mPages: {book['page']}",
+            f"\033[92mSize: {book['size']}",
+            f"\033[93mFile type: {book['fileType']}",
+            f"\033[0m"
+        )
+    which = input("> Which one do you want? ")
+    while True:
+        try:
+            int(which)
+            break
+        except ValueError:
+            print("Enter an integer.")
+            which = input("Which one do you want? ")
+    link = info[int(which) - 1]["link"]
+
+    site = BeautifulSoup(str(httpx.get(url=link).content), "html.parser")
+    URL = search("href=\"(.*)\"", str(site.findAll("a")[0])).group(1)
+
+    path = input("Enter the location of where you want to save this file: ")
+
+    if path[-1] != "/":
+        path += "/"
+    path = path.replace("~", "/home/matthew/")
+
+    fileName = unquote(URL.split("/")[-1])
+
+    content = httpx.get(URL, timeout=20.0).content
+
+    with open(f"{path}{fileName}", "wb") as f:
+        f.write(content[2:][:-1])
+
+if __name__ == "__main__":
+    if not len(sys.argv) < 2:
+        bookName = " ".join(sys.argv[1:])
+        main(bookName)
+    else:
+        print("You need to add a book name.\nEg. libgen example book name")
+        exit(1)
